@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>proyek harapan</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #90cbf7;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="game.icon.png" />
+<link rel="apple-touch-icon" href="game.apple-touch-icon.png"/>
+
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="game.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="game.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"game","experimentalVK":false,"fileSizes":{"game.pck":16540320,"game.wasm":43682606},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+
+
+<button id="fullscreen-btn" style="
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 15px;
+  font-size: 16px;
+  background: #1e90ff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  z-index: 10;
+">Fullscreen</button>
+
+<script>
+  const fullscreenBtn = document.getElementById("fullscreen-btn");
+  fullscreenBtn.addEventListener("click", () => {
+    const canvas = document.getElementsByTagName("canvas")[0];
+    if (canvas.requestFullscreen) {
+      canvas.requestFullscreen();
+    } else if (canvas.webkitRequestFullscreen) {
+      canvas.webkitRequestFullscreen(); // Safari
+    } else if (canvas.msRequestFullscreen) {
+      canvas.msRequestFullscreen(); // IE11
+    }
+  });
+</script>
+
+<script>
+const API_KEY = 'AIzaSyCeS4joBS6Yh2g8Ajjx79fVil74Ix88_TM'; // 🔴 Ganti ini dengan API key-mu
+
+// Buat tombol utama
+const tombol = document.createElement("button");
+tombol.textContent = "🔍 Cari Video YouTube";
+Object.assign(tombol.style, {
+  padding: "12px 24px",
+  fontSize: "16px",
+  backgroundColor: "#1a73e8",
+  color: "#fff",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  position: "absolute",
+  top: "20px",
+  left: "20px",
+  zIndex: 1000
+});
+document.body.appendChild(tombol);
+
+// Kontainer pencarian
+const container = document.createElement("div");
+Object.assign(container.style, {
+  position: "absolute",
+  top: "70px",
+  left: "20px",
+  width: "360px",
+  maxHeight: "400px",
+  overflowY: "auto",
+  padding: "10px",
+  background: "white",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+  borderRadius: "12px",
+  display: "none",
+  zIndex: 999
+});
+document.body.appendChild(container);
+
+// Input + tombol search
+const input = document.createElement("input");
+input.placeholder = "Cari video...";
+Object.assign(input.style, {
+  width: "70%",
+  padding: "10px",
+  fontSize: "14px",
+  borderRadius: "6px",
+  border: "1px solid #ccc"
+});
+
+const cariBtn = document.createElement("button");
+cariBtn.textContent = "Cari";
+Object.assign(cariBtn.style, {
+  marginLeft: "6px",
+  padding: "10px",
+  fontSize: "14px",
+  borderRadius: "6px",
+  backgroundColor: "#ff0000",
+  color: "#fff",
+  border: "none",
+  cursor: "pointer"
+});
+
+const hasil = document.createElement("div");
+hasil.style.marginTop = "10px";
+
+const player = document.createElement("div");
+player.style.marginTop = "10px";
+
+container.appendChild(input);
+container.appendChild(cariBtn);
+container.appendChild(hasil);
+container.appendChild(player);
+
+// Toggle pencarian
+let tampil = false;
+tombol.onclick = () => {
+  tampil = !tampil;
+  container.style.display = tampil ? "block" : "none";
+  tombol.textContent = tampil ? "❌ Tutup Pencarian" : "🔍 Cari Video YouTube";
+};
+
+
+// Fungsi cari
+cariBtn.onclick = () => {
+  const query = input.value.trim();
+  if (!query) return;
+  hasil.innerHTML = "Loading...";
+  player.innerHTML = "";
+
+  // Atur agar player bisa digulir
+  player.style.maxHeight = "200px";
+  player.style.minHeight = "150px";
+  player.style.overflowY = "auto";
+  player.style.overflowX = "hidden";
+  player.style.padding = "8px";
+  player.style.marginTop = "20px";
+  player.style.background = "#f9f9f9";
+  player.style.position = "relative";
+
+  fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${API_KEY}`)
+    .then(res => res.json())
+    .then(data => {
+      hasil.innerHTML = "";
+      data.items.forEach(item => {
+        const videoId = item.id.videoId;
+        const judul = item.snippet.title;
+        const thumb = item.snippet.thumbnails.medium.url;
+
+        const div = document.createElement("div");
+        div.style.display = "flex";
+        div.style.alignItems = "center";
+        div.style.cursor = "pointer";
+        div.style.marginBottom = "8px";
+
+        div.onclick = () => {
+          hasil.innerHTML = ""; // Hapus hasil pencarian
+
+          // Tambahkan iframe video
+          const iframe = document.createElement("iframe");
+          iframe.width = "320";
+          iframe.height = "180";
+          iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+          iframe.frameBorder = "0";
+          iframe.allow = "autoplay; encrypted-media";
+          iframe.allowFullscreen = true;
+          iframe.style.borderRadius = "8px";
+          iframe.style.display = "block";
+          iframe.style.marginBottom = "16px";
+
+          player.appendChild(iframe);
+
+          // Tambahkan ruang kosong agar bisa scroll
+          const spacer = document.createElement("div");
+          spacer.style.height = "300px";
+          player.appendChild(spacer);
+        };
+
+        div.innerHTML = `
+          <img src="${thumb}" style="width:120px; height:90px; border-radius:6px;">
+          <span style="margin-left:10px;">${judul}</span>
+        `;
+
+        hasil.appendChild(div);
+      });
+    })
+    .catch(err => {
+      hasil.innerHTML = "Gagal mengambil hasil. Periksa API key.";
+      console.error(err);
+    });
+};
+
+
+
+</script>
+
+	</body>
+</html>
+
